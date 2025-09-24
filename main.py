@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import logging
 from dotenv import load_dotenv
 import os
@@ -10,6 +11,9 @@ handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w'
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+
+gi = os.getenv('SERVER_ID')
+GUILD_ID = discord.Object(id = gi)
 
 bot = commands.Bot(command_prefix='/', intents=intents)
 
@@ -43,15 +47,38 @@ lowCountItems = {}
 This function checks if the user has the proper Discord role/permissions for certain commands.
 Plan to eventually make it so server owners can customize what roles are allowed instead of just default Owner and Manager.
 '''
-def checkPerms(ctx):
-    role = discord.utils.get(ctx.guild.roles, name = "Owner")
-    if role:
+def checkPerms(interaction: discord.Interaction) -> bool:
+    role = discord.utils.get(interaction.guild.roles, name="Owner")
+    if role in interaction.user.roles:
         return True
     return False
 
 @bot.event
 async def on_ready():
     print(f"{bot.user.name} is ready!")
+
+    # The following code is to clear all global and guild commands.
+    # print(f'We have logged in as {bot.user}')
+    # guilds = [guild.id for guild in bot.guilds]
+    # print(f'The {bot.user.name} bot is in {len(guilds)} Guilds.\nThe guilds IDs list: {guilds}')
+    # for guildId in guilds:
+    #     guild = discord.Object(id=guildId)
+    #     print(f'Deleting commands from {guildId}.....')
+    #     bot.tree.clear_commands(guild=guild,type=None)
+    #     await bot.tree.sync(guild=guild)
+    #     print(f'Deleted commands from {guildId}!')
+    #     continue
+    # print('Deleting global commands.....')
+    # bot.tree.clear_commands(guild=None,type=None)
+    # await bot.tree.sync(guild=None)
+    # print('Deleted global commands!')
+    try:
+        guild = discord.Object(id = gi)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"Synced {len(synced)} commands to {guild.id}.")
+    except Exception as e:
+        print(f"Problem syncing commands: {e}")
+
 
 @bot.event
 async def on_member_join(member):
@@ -68,34 +95,43 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-@bot.command()
-async def hello(ctx):
-    await ctx.send(f"Hello {ctx.author.mention}")
+@bot.tree.command(name = "hellooo", description = "Says hello", guild = GUILD_ID)
+async def hello(interaction: discord.Interaction):
+    await interaction.response.send_message(f"Hello {interaction.user.mention}!")
+
+@bot.tree.command(name="tester", description = "checking if permissions working", guild = GUILD_ID )
+async def test(interaction: discord.Interaction):
+    # await interaction.response.send_message("inside")
+    if checkPerms(interaction):
+        await interaction.response.send_message("permission granted")
+    else:
+        await interaction.response.send_message("permission failed.")
 
 ''' 
 Show all the items in inventory with their current count
 '''
-@bot.command()
-async def showInventory(ctx):
+@bot.tree.command(name = "show_inventory", description = "Shows a list of all inventory items and their amount in storage", guild = GUILD_ID)
+async def showInventory(interaction: discord.Interaction):
     if len(inventory) == 0:
-        await ctx.send("The store's inventory is empty!")
+        await interaction.response.send_message("The store's inventory is empty!")
         return
     str = ""
     for itemName in inventory:
         str += itemName + f" - {inventory[itemName].amt} left"+ "\n"
-    await ctx.send(str)
+    await interaction.response.send_message(str)
 
 '''
 Add an item to the inventory list. Need to set a default number for lowCountThreshold
 This does not affect the inventory count. This is just to add new items previously not in inventory/storage.
 '''
-@bot.command()
-async def addItem(ctx, *, itemName: str):
+@bot.tree.command(name = "add_item", description = "Add a new item into inventory.", guild = GUILD_ID)
+@app_commands.describe(item_name = "name of the new item to be added")
+async def addItem(interaction: discord.Interaction, item_name: str):
     # Check if user has proper roles first.
-    lowerItemName = itemName.lower()
-    if checkPerms(ctx):
+    lowerItemName = item_name.lower()
+    if checkPerms(interaction):
         if lowerItemName in inventory: # Item is already in inventory, so don't add it again.
-            await ctx.send(f"{itemName} is already an item in inventory.") # can add the "with x number left in storage" later
+            await interaction.response.send_message(f"{item_name} is already an item in inventory.") # can add the "with x number left in storage" later
             return
         else:
             item = Item(lowerItemName, 0, True, 5, None)
@@ -103,63 +139,65 @@ async def addItem(ctx, *, itemName: str):
             # the default low count threshold is 5 and the location is None until set up
             inventory[lowerItemName] = item
             lowCountItems[lowerItemName] = lowerItemName    # Because the lowCount warning is set to True on default, we have to add it to lowCountItems
-            await ctx.send(f"Successfully added {itemName} into inventory.")
+            await interaction.response.send_message(f"Successfully added {item_name} into inventory.")
     else: # User does not have the proper roles to do this command.
-        await ctx.send("You do not have the proper roles (Owner, Manager) to add items into inventory!")
+        await interaction.response.send_message("You do not have the proper roles (Owner, Manager) to add items into inventory!")
 
 '''
 This function completely removes the item from inventory.
 Use this function when the item is removed from the menu.
 '''
-@bot.command()
-async def deleteItem(ctx, *, itemName: str):
-    lowerItemName = itemName.lower()
-    if not checkPerms(ctx):
-        await ctx.send("You do not the proper roles (Owner, Manager) to delete f{itemName} from inventory!")
+@bot.tree.command(name="delete_item", description = "Removes an item completely from inventory", guild=GUILD_ID)
+@app_commands.describe(item_name = "name of the item to be deleted")
+async def deleteItem(interaction: discord.Interaction, item_name: str):
+    lowerItemName = item_name.lower()
+    if not checkPerms(interaction):
+        await interaction.response.send_message("You do not the proper roles (Owner, Manager) to delete f{itemName} from inventory!")
     if lowerItemName in inventory:
         if lowerItemName in lowCountItems: # Delete from lowCountItems as well
             lowCountItems.pop(lowerItemName)
         del inventory[lowerItemName]
-        await ctx.send(f"{itemName} has been successfully deleted from inventory.")
+        await interaction.response.send_message(f"{item_name} has been successfully deleted from inventory.")
     else:
-        await ctx.send(f"{itemName} is not an item in inventory. Please ensure you have the proper name and spelling.")
+        await interaction.response.send_message(f"{item_name} is not an item in inventory. Please ensure you have the proper name and spelling.")
 
 '''
 Show all the items with lowStock as True in inventory
 '''
-@bot.command()
-async def lowStock(ctx):
+@bot.tree.command(name = "lowStock", description = "shows all low stock items",guild = GUILD_ID)
+async def lowStock(interaction: discord.Interaction):
     if len(lowCountItems) == 0:
-        await ctx.send("Nothing! All items are properly stocked :)")
+        await interaction.response.send_message("Nothing! All items are properly stocked :)")
     else: # Show the count of the items
         str = ""
         for name in lowCountItems:
             str += name + f" - {inventory[name].amt} left" + "\n"
-        await ctx.send(str)
+        await interaction.response.send_message(str)
 
 '''
 Adds an integer amount to itemName's amt in inventory if valid.
 '''
-@bot.command()
-async def add(ctx, amount: int, *, itemName: str):
-    lowerItemName = itemName.lower()
+@bot.tree.command(name = "add", description = "adds to an item", guild = GUILD_ID)
+@app_commands.describe(amount = "amount of the item added", item_name = "name of the item to be added to")
+async def add(interaction: discord.Interaction, amount: int, item_name: str):
+    lowerItemName = item_name.lower()
     if lowerItemName in inventory:
         if amount <= 0: # Don't add negative numbers
-            await ctx.send("Error: Please make sure the amount you add is a positive number.")
+            await interaction.response.send_message("Error: Please make sure the amount you add is a positive number.")
         else:
             inventory[lowerItemName].amt += amount
             # Check if new amount is greater than itemName's threshold and update lowStockItems if necessary.
             if lowerItemName in lowCountItems and inventory[lowerItemName].amt >= inventory[lowerItemName].lowCountThreshold:
                 lowCountItems.pop(lowerItemName)
                 inventory[lowerItemName].lowCount = False
-            await ctx.send(f"Added {amount} {itemName} into inventory, for a new total of {inventory[lowerItemName].amt}")
+            await interaction.response.send_message(f"Added {amount} {item_name} into inventory, for a new total of {inventory[lowerItemName].amt}")
     else:
-        await ctx.send(f"{itemName} is not an item in inventory. Please ensure you have the proper name and spelling.")
+        await interaction.response.send_message(f"{item_name} is not an item in inventory. Please ensure you have the proper name and spelling.")
 
 '''
 Removes an integer amount to itemName's amt in inventory if valid
 '''
-@bot.command()
+@bot.tree.command(name = "take", description = "removes a number of items from inventory", guild = GUILD_ID)
 async def take(ctx, amount: int, *, itemName: str):
     lowerItemName = itemName.lower()
     if lowerItemName in inventory:
@@ -178,13 +216,20 @@ async def take(ctx, amount: int, *, itemName: str):
             await ctx.send(f"Took {amount} {itemName} from inventory. {inventory[lowerItemName].amt} left.")
     else:
         await ctx.send(f"{itemName} is not an item in inventory. Please ensure you have the proper name and spelling.")
-    return
 
 '''
 Changes itemName's lowCountThreshold in inventory.
 '''
 @bot.command()
-async def changeThreshold(ctx, *, msg):
+async def changeThreshold(ctx, newThres: int, *, itemName: str):
+    lowerItemName = itemName.lower()
+    if lowerItemName in inventory:
+        if newThres < 0:
+            await ctx.send("Error: Please make sure the new threshold is greater than 0.")
+        else:
+            inventory[lowerItemName].lowCountThreshold = newThres
+    else:
+        await ctx.send(f"{itemName} is not an item in inventory. Please ensure you have the proper name and spelling.")
     return
 
 '''
