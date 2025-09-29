@@ -207,7 +207,7 @@ async def take(interaction: discord.Interaction, amount: int, item_name: str):
         else:
             inventory[lowerItemName].amt -= amount
             if inventory[lowerItemName].amt <= 0:
-                await interaction.response.send_message(f"Error: Updated to a negative amount of {itemName}. Please recount your store's inventory to ensure numbers are accurate.")
+                await interaction.response.send_message(f"Error: Updated to a negative amount of {item_name}. Please recount your store's inventory to ensure numbers are accurate.")
                 # Maybe ping necessary roles
             # Check if new amount is greater than itemName's threshold and update lowStockItems if necessary.
             if not(lowerItemName in lowCountItems) and inventory[lowerItemName].amt <= inventory[lowerItemName].lowCountThreshold:
