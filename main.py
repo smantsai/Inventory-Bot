@@ -153,6 +153,7 @@ async def deleteItem(interaction: discord.Interaction, item_name: str):
     lowerItemName = item_name.lower()
     if not checkPerms(interaction):
         await interaction.response.send_message("You do not the proper roles (Owner, Manager) to delete f{itemName} from inventory!")
+        return
     if lowerItemName in inventory:
         if lowerItemName in lowCountItems: # Delete from lowCountItems as well
             lowCountItems.pop(lowerItemName)
@@ -184,6 +185,7 @@ async def add(interaction: discord.Interaction, amount: int, item_name: str):
     if lowerItemName in inventory:
         if amount <= 0: # Don't add negative numbers
             await interaction.response.send_message("Error: Please make sure the amount you add is a positive number.")
+            return
         else:
             inventory[lowerItemName].amt += amount
             # Check if new amount is greater than itemName's threshold and update lowStockItems if necessary.
@@ -198,17 +200,19 @@ async def add(interaction: discord.Interaction, amount: int, item_name: str):
 Removes an integer amount to itemName's amt in inventory if valid
 '''
 @bot.tree.command(name = "take", description = "removes a number of items from inventory", guild = GUILD_ID)
-@app_commands.describe(amoint = "amount of the item taken", item_name = "name of the item taken")
+@app_commands.describe(amount = "amount of the item taken", item_name = "name of the item taken")
 async def take(interaction: discord.Interaction, amount: int, item_name: str):
     lowerItemName = item_name.lower()
     if lowerItemName in inventory:
         if amount <= 0: # Don't subtract negative numbers
             await interaction.response.send_message("Error: Please make sure the amount you are taking is a positive number.")
+            return
         else:
             inventory[lowerItemName].amt -= amount
             if inventory[lowerItemName].amt <= 0:
                 await interaction.response.send_message(f"Error: Updated to a negative amount of {item_name}. Please recount your store's inventory to ensure numbers are accurate.")
                 # Maybe ping necessary roles
+                # We will still update the amount even if it is negative, but send an error message.
             # Check if new amount is greater than itemName's threshold and update lowStockItems if necessary.
             if not(lowerItemName in lowCountItems) and inventory[lowerItemName].amt <= inventory[lowerItemName].lowCountThreshold:
                 lowCountItems[lowerItemName] = lowerItemName
@@ -232,6 +236,7 @@ async def changeThreshold(interaction: discord.Interaction, new_thres: int, item
         if lowerItemName in inventory:
             if new_thres < 0:
                 await interaction.response.send_message("Error: Please make sure the new threshold is greater than 0.")
+                return
             else:
                 inventory[lowerItemName].lowCountThreshold = new_thres
                 await interaction.response.send_message(f"Changed the threshold of {item_name} to {new_thres}.")
@@ -261,27 +266,26 @@ async def updateLocation(interaction: discord.Interaction, new_location: str, it
 '''
 Returns the location of itemName, if itemName is in inventory and itemName's location is set up.
 Otherwise, send an error message.
+This command is used to help employees find an item in a storage / backroom.
 '''
-@bot.tree.command()
-async def find(ctx, *, itemName):
-    item = itemName.lower()
-    if item in inventory:
-        if inventory[item].location == None:
-            await ctx.send(f"{itemName}'s location has not been set up.")
+@bot.tree.command(name = "find", description = "returns the item's location in storage", guild = GUILD_ID)
+@app_commands.describe(item_name = "name of the item")
+async def find(interaction: discord.Interaction, item_name: str):
+    lowerItemName = item_name.lower()
+    if lowerItemName in inventory:
+        if inventory[lowerItemName].location == None:
+            await interaction.response.send_message(f"{item_name}'s location has not been set up.")
         else:
-            await ctx.send(f"{itemName} is found in {inventory[item].location}")
+            await interaction.response.send_message(f"{item_name} is found in {inventory[lowerItemName].location}")
     else:
-        await ctx.send(f"{itemName} is not an item in storage. Please ensure you have the proper name and spelling.")
+        await interaction.response.send_message(f"{item_name} is not an item in storage. Please ensure you have the proper name and spelling.")
 
 '''
 This function sends a direct message to the user with a description of all functions.
 '''
-@bot.command()
-async def commands(ctx):
-    return
-
-
-
-
-
+@bot.tree.command(name = "commands", description = "sends a message with a description of all functions", guild = GUILD_ID)
+async def commands(interaction: discord.Interaction):
+    await interaction.response.send_message("Here is a document on all commands and how to use the bot: ", ephemeral = True) # ADD GOOGLE DOC LINK LATER ON
+    
+    
 bot.run(token, log_handler=handler, log_level=logging.DEBUG)
