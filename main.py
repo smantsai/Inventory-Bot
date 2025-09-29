@@ -57,7 +57,7 @@ def checkPerms(interaction: discord.Interaction) -> bool:
 async def on_ready():
     print(f"{bot.user.name} is ready!")
 
-    # The following code is to clear all global and guild commands.
+    # The following code is to clear all global and guild commands. SOURCE: https://github.com/Rapptz/discord.py/discussions/9064 
     # print(f'We have logged in as {bot.user}')
     # guilds = [guild.id for guild in bot.guilds]
     # print(f'The {bot.user.name} bot is in {len(guilds)} Guilds.\nThe guilds IDs list: {guilds}')
@@ -164,7 +164,7 @@ async def deleteItem(interaction: discord.Interaction, item_name: str):
 '''
 Show all the items with lowStock as True in inventory
 '''
-@bot.tree.command(name = "lowStock", description = "shows all low stock items",guild = GUILD_ID)
+@bot.tree.command(name = "low_stock", description = "shows all low stock items",guild = GUILD_ID)
 async def lowStock(interaction: discord.Interaction):
     if len(lowCountItems) == 0:
         await interaction.response.send_message("Nothing! All items are properly stocked :)")
@@ -198,53 +198,71 @@ async def add(interaction: discord.Interaction, amount: int, item_name: str):
 Removes an integer amount to itemName's amt in inventory if valid
 '''
 @bot.tree.command(name = "take", description = "removes a number of items from inventory", guild = GUILD_ID)
-async def take(ctx, amount: int, *, itemName: str):
-    lowerItemName = itemName.lower()
+@app_commands.describe(amoint = "amount of the item taken", item_name = "name of the item taken")
+async def take(interaction: discord.Interaction, amount: int, item_name: str):
+    lowerItemName = item_name.lower()
     if lowerItemName in inventory:
         if amount <= 0: # Don't subtract negative numbers
-            await ctx.send("Error: Please make sure the amount you are taking is a positive number.")
+            await interaction.response.send_message("Error: Please make sure the amount you are taking is a positive number.")
         else:
             inventory[lowerItemName].amt -= amount
             if inventory[lowerItemName].amt <= 0:
-                await ctx.send(f"Error: Updated to a negative amount of {itemName}. Please recount your store's inventory to ensure numbers are accurate.")
+                await interaction.response.send_message(f"Error: Updated to a negative amount of {itemName}. Please recount your store's inventory to ensure numbers are accurate.")
                 # Maybe ping necessary roles
             # Check if new amount is greater than itemName's threshold and update lowStockItems if necessary.
             if not(lowerItemName in lowCountItems) and inventory[lowerItemName].amt <= inventory[lowerItemName].lowCountThreshold:
                 lowCountItems[lowerItemName] = lowerItemName
                 inventory[lowerItemName].lowCount = True
-                await ctx.send(f"Warning: {itemName} is now on low stock!")
-            await ctx.send(f"Took {amount} {itemName} from inventory. {inventory[lowerItemName].amt} left.")
+                await interaction.response.send_message(f"Warning: {item_name} is now on low stock!")
+            await interaction.response.send_message(f"Took {amount} {item_name} from inventory. {inventory[lowerItemName].amt} left.")
     else:
-        await ctx.send(f"{itemName} is not an item in inventory. Please ensure you have the proper name and spelling.")
+        await interaction.response.send_message(f"{item_name} is not an item in inventory. Please ensure you have the proper name and spelling.")
 
 '''
 Changes itemName's lowCountThreshold in inventory.
 '''
-@bot.command()
-async def changeThreshold(ctx, newThres: int, *, itemName: str):
-    lowerItemName = itemName.lower()
-    if lowerItemName in inventory:
-        if newThres < 0:
-            await ctx.send("Error: Please make sure the new threshold is greater than 0.")
+@bot.tree.command(name = "change_threshold", description = "changes the item's threshold before considered low stock", guild = GUILD_ID)
+@app_commands.describe(new_thres = "the new threshold", item_name = "name of the item being changed")
+async def changeThreshold(interaction: discord.Interaction, new_thres: int, item_name: str):
+    if not checkPerms(interaction):
+        await interaction.response.send_message("You do not the proper roles (Owner, Manager) to use this command.")
+        return
+    else: 
+        lowerItemName = item_name.lower()
+        if lowerItemName in inventory:
+            if new_thres < 0:
+                await interaction.response.send_message("Error: Please make sure the new threshold is greater than 0.")
+            else:
+                inventory[lowerItemName].lowCountThreshold = new_thres
+                await interaction.response.send_message(f"Changed the threshold of {item_name} to {new_thres}.")
         else:
-            inventory[lowerItemName].lowCountThreshold = newThres
-    else:
-        await ctx.send(f"{itemName} is not an item in inventory. Please ensure you have the proper name and spelling.")
+            await interaction.response.send_message(f"{item_name} is not an item in inventory. Please ensure you have the proper name and spelling.")
     return
 
 '''
 Changes itemName's location in inventory if itemName is a valid item in inventory.
 Otherwise, send an error message.
 '''
-@bot.command()
-async def updateLocation(ctx, *, msg):
+@bot.tree.command(name = "change_location", description = "updates the item's location in inventory", guild = GUILD_ID)
+@app_commands.describe(new_location = "the item's location", item_name = "name of the item")
+async def updateLocation(interaction: discord.Interaction, new_location: str, item_name: str):
+    if not checkPerms(interaction):
+        await interaction.response.send_message("You do not the proper roles (Owner, Manager) to use this command.")
+        return
+    else:
+        lowerItemName = item_name.lower()
+        if lowerItemName in inventory:
+            inventory[lowerItemName].location = new_location
+            await interaction.response.send_message(f"Changed the location of {item_name} to {new_location}.")
+        else:
+            await interaction.response.send_message(f"{item_name} is not an item in inventory. Please ensure you have the proper name and spelling.")
     return
 
 '''
 Returns the location of itemName, if itemName is in inventory and itemName's location is set up.
 Otherwise, send an error message.
 '''
-@bot.command()
+@bot.tree.command()
 async def find(ctx, *, itemName):
     item = itemName.lower()
     if item in inventory:
