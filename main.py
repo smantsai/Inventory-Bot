@@ -287,5 +287,6 @@ This function sends a direct message to the user with a description of all funct
 async def commands(interaction: discord.Interaction):
     await interaction.response.send_message("Here is a document on all commands and how to use the bot: ", ephemeral = True) # ADD GOOGLE DOC LINK LATER ON
     
+    # Test commit
     
 bot.run(token, log_handler=handler, log_level=logging.DEBUG)
